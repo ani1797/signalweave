@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.foundry/
+
+# Python build artifacts
+*.egg-info/
+build/
+dist/

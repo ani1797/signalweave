@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signalweave"
+version = "0.1.0"
+description = "Declarative rule-evaluation agent built on the Microsoft Agent Framework and hosted on Microsoft Foundry."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  # Upper-bounded to stay compatible with the `dev` tooling
+  # (agent-dev-cli pins agent-framework-core < 1.3.0).
+  "agent-framework>=1.2.2,<1.3.0",
+  "agent-framework-foundry-hosting",
+  "opentelemetry-exporter-otlp-proto-grpc",
+  "python-dotenv",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+# Local debugging / Foundry Toolkit Agent Inspector tooling.
+dev = ["debugpy", "agent-dev-cli>=0.0.1b260427", "pytest>=8.0"]
+
+[project.scripts]
+# Standalone deterministic check engine (no agent runtime required).
+signalweave-checks = "signalweave.checks.cli:main"
+# Run the hosted agent behind the Foundry HTTP server.
+signalweave = "signalweave.app:main"
+
+[tool.setuptools.packages.find]
+include = ["signalweave*"]
+
+[tool.setuptools.package-data]
+# Ship runtime content (skills + instructions) inside the wheel.
+signalweave = ["instructions.txt", "skills/**/*"]

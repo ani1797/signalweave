@@ -1,0 +1,66 @@
+process: life-insurance-underwriting
+
+rules:
+  - name: L001
+    description: "Application signature must be present"
+    severity: fail
+    on_missing: fail
+    check:
+      field: data.application.signature_present
+      op: eq
+      value: true
+
+  - name: L002
+    description: "Coverage amount must not exceed max coverage for rate class"
+    severity: escalate
+    authority: "Senior Underwriter"
+    on_missing: fail
+    check:
+      field: data.application.coverage_amount
+      op: lte
+      field_value: data.rates.max_coverage
+
+  - name: L003
+    description: "Medical history flag requires review if true"
+    severity: escalate
+    authority: "Medical Director"
+    on_missing: skip
+    check:
+      field: data.medical.history_flag
+      op: eq
+      value: false
+      
+  - name: L004
+    description: "Applicant BMI must be less than 30 for auto-approval"
+    severity: escalate
+    authority: "Underwriter"
+    on_missing: skip
+    check:
+      field: data.medical.bmi
+      op: lt
+      value: 30.0
+
+  - name: L005
+    description: "Total cholesterol must be below 250"
+    severity: fail
+    on_missing: escalate
+    authority: "Underwriter"
+    check:
+      field: data.labs.cholesterol
+      op: lt
+      value: 250.0
+
+  - name: L006
+    description: "Nicotine positive results fail standard policy"
+    severity: fail
+    on_missing: skip
+    check:
+      if:
+        field: data.labs.nicotine_positive
+        op: eq
+        value: true
+      then:
+        field: data.application.rate_class
+        op: eq
+        value: substandard
+

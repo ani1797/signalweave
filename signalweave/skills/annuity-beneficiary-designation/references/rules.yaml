@@ -1,0 +1,54 @@
+---
+# Annuity beneficiary designation rules
+# Showcases the expression-string form of the SignalWeave rule engine.
+# Every 'check' here is a bare expression string — no structured mapping needed.
+
+rules:
+  - id: policy-number-present
+    name: Policy number must be present
+    check: "data.policy_number is present"
+    severity: fail
+    on_missing: skip
+
+  - id: at-least-one-beneficiary
+    name: At least one beneficiary required
+    check: "count(data.beneficiaries) >= 1"
+    severity: fail
+    on_missing: fail
+
+  - id: shares-sum-to-100
+    name: Beneficiary share percentages must total 100%
+    check: "sum(data.beneficiaries[].share_percentage) == 100"
+    severity: fail
+    on_missing: fail
+
+  - id: all-shares-positive
+    name: Each beneficiary must have a positive share percentage
+    check: "all(data.beneficiaries where share_percentage > 0)"
+    severity: fail
+    on_missing: fail
+
+  - id: no-shares-over-100
+    name: No single beneficiary may have a share percentage exceeding 100%
+    check: "none(data.beneficiaries where share_percentage > 100)"
+    severity: fail
+    on_missing: fail
+
+  - id: premium-components-add-up
+    name: Base premium plus rider premium must equal total premium
+    check: "data.base_premium + data.rider_premium == data.total_premium"
+    severity: fail
+    on_missing: skip
+
+  - id: premium-within-contribution-limit
+    name: Total premium must not exceed the annual contribution limit
+    check: "data.total_premium <= data.annual_contribution_limit"
+    severity: fail
+    on_missing: skip
+
+  - id: minor-requires-guardian
+    name: A minor beneficiary requires a guardian on record
+    check: "if any(data.beneficiaries where is_minor == true) then data.guardian_id is present"
+    severity: escalate
+    on_missing: skip
+    authority: Annuity Operations Supervisor

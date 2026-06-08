@@ -1,0 +1,82 @@
+---
+process: annuity-full-surrender
+description: >
+  Annuity full surrender (cash-out) workflow rules. Validates a full-surrender
+  request against contract status, payout arithmetic, and suitability/tax
+  controls. Uses the expression-string form of the SignalWeave rule engine.
+
+rules:
+  - id: policy-number-present
+    name: Policy number must be present
+    check: "data.policy_number is present"
+    severity: fail
+    on_missing: fail
+
+  - id: contract-in-force
+    name: Contract must be in force to be surrendered
+    check: "data.contract_status == 'in_force'"
+    severity: fail
+    on_missing: fail
+
+  - id: surrender-type-full
+    name: Surrender type must be a full surrender
+    check: "data.surrender_type == 'full'"
+    severity: fail
+    on_missing: fail
+
+  - id: surrender-form-signed
+    name: A signed surrender request form is required
+    check: "data.signed_surrender_form == true"
+    severity: fail
+    on_missing: fail
+
+  - id: surrender-charge-non-negative
+    name: Surrender charge cannot be negative
+    check: "data.surrender_charge >= 0"
+    severity: fail
+    on_missing: fail
+
+  - id: net-surrender-value-correct
+    name: Net surrender value must equal contract value less charges and loans plus MVA
+    check: "data.contract_value - data.surrender_charge + data.market_value_adjustment - data.outstanding_loan_balance == data.net_surrender_value"
+    severity: fail
+    on_missing: fail
+
+  - id: net-payout-after-withholding
+    name: Net payout must equal net surrender value less tax withholding
+    check: "data.net_surrender_value - data.federal_withholding - data.state_withholding == data.net_payout"
+    severity: fail
+    on_missing: fail
+
+  - id: net-payout-positive
+    name: Net payout to the owner must be positive
+    check: "data.net_payout > 0"
+    severity: fail
+    on_missing: fail
+
+  - id: surrender-charge-consistent
+    name: A surrender charge must apply while the contract is within its surrender-charge period
+    check: "if data.surrender_charge_period_remaining_years > 0 then data.surrender_charge > 0"
+    severity: fail
+    on_missing: skip
+
+  - id: early-withdrawal-tax-review
+    name: Owners under 59½ must acknowledge the early-withdrawal tax penalty
+    check: "if data.owner_age < 59.5 then data.acknowledged_tax_penalty == true"
+    severity: escalate
+    on_missing: skip
+    authority: Annuity Tax Compliance Desk
+
+  - id: large-surrender-review
+    name: Surrenders above the auto-process threshold require manual review
+    check: "data.contract_value <= data.auto_process_threshold"
+    severity: escalate
+    on_missing: skip
+    authority: Annuity Operations Supervisor
+
+  - id: replacement-suitability-review
+    name: A replacement or 1035 exchange requires a completed suitability review
+    check: "if data.replacement_flag == true then data.suitability_review_complete == true"
+    severity: escalate
+    on_missing: skip
+    authority: Suitability Review Committee

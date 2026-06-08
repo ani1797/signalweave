@@ -1,0 +1,4 @@
+rate_class,multiplier,max_coverage
+preferred,0.8,5000000
+standard,1.0,2000000
+substandard,1.5,500000

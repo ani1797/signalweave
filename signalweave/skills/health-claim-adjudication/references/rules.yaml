@@ -1,0 +1,166 @@
+process: health-claim-adjudication
+description: >
+  Automated adjudication rules for an inbound health insurance (medical) claim.
+  The payload is assembled from several source systems, each contributing a
+  namespaced slice so every field path reveals where the datum came from:
+    data.claim.*          -> Claims Intake System (load_claim)
+    data.eligibility.*    -> Membership / Eligibility System (load_eligibility)
+    data.provider.*       -> Provider Network & Pricing System (load_provider)
+    data.authorization.*  -> Utilization Management System (load_authorization)
+    data.fraud.*          -> Special Investigations / Fraud Analytics (load_fraud_signal)
+  A clean claim is auto-approved for payment, a deficient claim is denied, and a
+  claim that trips an escalate rule is routed to the named authority for review.
+  Note H005 and H008 deliberately compare values that originate in DIFFERENT
+  source systems.
+rules:
+  - id: H001
+    name: Claim id present
+    description: Every claim must carry its originating claim id (Claims system).
+    severity: fail
+    on_missing: fail
+    check:
+      field: data.claim.claim_id
+      op: required
+
+  - id: H002
+    name: Member id present
+    description: The insured member id must be supplied (Claims system).
+    severity: fail
+    check:
+      field: data.claim.member_id
+      op: required
+
+  - id: H003
+    name: Provider NPI present
+    description: The rendering provider's NPI is required (Claims system).
+    severity: fail
+    check:
+      field: data.claim.provider_npi
+      op: required
+
+  - id: H004
+    name: Member coverage is active
+    description: >
+      Eligibility system must report active coverage for the member on the date
+      of service.
+    severity: fail
+    check:
+      field: data.eligibility.coverage_status
+      op: eq
+      value: active
+
+  - id: H005
+    name: Service date within coverage period
+    description: >
+      Cross-system check: the date of service (Claims system) must fall within
+      the coverage effective/termination window (Eligibility system).
+    severity: fail
+    check:
+      all:
+        - {
+            field: data.claim.service_date,
+            op: gte,
+            field_value: data.eligibility.coverage_effective_date,
+          }
+        - {
+            field: data.claim.service_date,
+            op: lte,
+            field_value: data.eligibility.coverage_termination_date,
+          }
+
+  - id: H006
+    name: Rendering provider is in network
+    description: >
+      The provider must be in network for auto-adjudication (Provider Network
+      system).
+    severity: fail
+    check:
+      field: data.provider.in_network
+      op: eq
+      value: true
+
+  - id: H007
+    name: Diagnosis and procedure coding complete
+    description: >
+      A primary diagnosis code, a procedure (CPT/HCPCS) code, and complete
+      supporting documentation are required (Claims system).
+    severity: fail
+    on_missing: fail
+    check:
+      all:
+        - { field: data.claim.diagnosis_code, op: required }
+        - { field: data.claim.procedure_code, op: required }
+        - { field: data.claim.documentation_complete, op: eq, value: true }
+
+  - id: H008
+    name: Billed amount within contracted allowed amount
+    description: >
+      Cross-system check: the billed amount (Claims system) must not exceed the
+      contracted allowed amount (Provider Network & Pricing system).
+    severity: fail
+    check:
+      field: data.claim.billed_amount
+      op: lte
+      field_value: data.provider.allowed_amount
+
+  - id: H009
+    name: Prior authorization obtained when required
+    description: >
+      When the Utilization Management system flags that prior authorization is
+      required, an approved authorization number must be on file; otherwise
+      route back to Utilization Management.
+    severity: escalate
+    authority: Utilization Management
+    on_missing: escalate
+    check:
+      if:
+        field: data.authorization.prior_authorization_required
+        op: eq
+        value: true
+      then:
+        field: data.authorization.prior_authorization_number
+        op: required
+
+  - id: H010
+    name: Billed amount within auto-adjudication threshold
+    description: >
+      Claims billed above the straight-through-processing threshold must be
+      reviewed by a senior claims examiner before payment (Claims system).
+    severity: escalate
+    authority: Senior Claims Examiner
+    on_missing: escalate
+    check:
+      field: data.claim.billed_amount
+      op: lte
+      value: 10000
+
+  - id: H011
+    name: Fraud score below threshold
+    description: >
+      A fraud score at or above 70 (Fraud Analytics system) indicates probable
+      fraud and must be referred to the Special Investigations Unit.
+    severity: escalate
+    authority: Special Investigations Unit (SIU)
+    on_missing: escalate
+    check:
+      field: data.fraud.score
+      op: lt
+      value: 70
+
+  - id: H012
+    name: Flagged procedure requires medical necessity review
+    description: >
+      When the Utilization Management system flags the claim for medical
+      necessity, a clinical determination id is required from the Medical
+      Director before the claim can be paid.
+    severity: escalate
+    authority: Medical Director / Clinical Review
+    on_missing: escalate
+    check:
+      if:
+        field: data.authorization.medical_necessity_flag
+        op: eq
+        value: true
+      then:
+        field: data.authorization.clinical_review_id
+        op: required
